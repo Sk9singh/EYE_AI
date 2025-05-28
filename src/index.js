@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -18,29 +19,30 @@ const server = http.createServer(app);
 // Configure CORS for both Express and Socket.IO
 const corsOptions = {
     origin: process.env.NODE_ENV === 'production' 
-        ? ['https://your-frontend-domain.com', 'http://localhost:3000']
+        ? [process.env.FRONTEND_URL || 'http://localhost:3000']
         : '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true
 };
 
+app.use(cors(corsOptions));
+
 const io = new Server(server, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
+    cors: corsOptions
 });
 
 // Middleware
 app.use(express.json());
 
 // Connect to MongoDB
-mongoose.connect('mongodb://localhost:27017/eyeai', {
+const MONGODB_URI = process.env.MONGODB_URI;
+
+mongoose.connect(MONGODB_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true
 }).then(() => {
-    console.log('Connected to MongoDB');
+    console.log('Connected to MongoDB compass');
 }).catch(err => {
     console.error('MongoDB connection error:', err);
 });
