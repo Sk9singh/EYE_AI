@@ -60,11 +60,43 @@ class SocketService {
                 }
             });
 
+            // Handle student leave
+            socket.on('student:leave', () => {
+                if (socket.teacherId && socket.studentId) {
+                    const roomId = this.teacherRooms.get(socket.teacherId);
+                    if (roomId) {
+                        this.io.to(roomId).emit('student:left', {
+                            studentId: socket.studentId,
+                            studentName: socket.studentName,
+                            timestamp: new Date()
+                        });
+                    }
+                }
+            });
+
             // Handle disconnection
             socket.on('disconnect', () => {
+                if (socket.teacherId && socket.studentId) {
+                    const roomId = this.teacherRooms.get(socket.teacherId);
+                    if (roomId) {
+                        this.io.to(roomId).emit('student:left', {
+                            studentId: socket.studentId,
+                            studentName: socket.studentName,
+                            timestamp: new Date()
+                        });
+                    }
+                }
                 console.log('Client disconnected:', socket.id);
             });
         });
+    }
+
+    // Emit active students count to teacher's room
+    emitActiveStudentsCount(teacherId, count) {
+        const roomId = this.teacherRooms.get(teacherId);
+        if (roomId) {
+            this.io.to(roomId).emit('students:count', { count });
+        }
     }
 
     // Emit session start to teacher's room
@@ -76,11 +108,16 @@ class SocketService {
     }
 
     // Emit session end to teacher's room
-    emitSessionEnd(teacherId) {
-        const roomId = this.teacherRooms.get(teacherId);
-        if (roomId) {
-            this.io.to(roomId).emit('session:end');
-            this.teacherRooms.delete(teacherId);
+    async emitSessionEnd(teacherId) {
+        try {
+            const leaderboard = await Session.getLeaderboard(teacherId);
+            const roomId = this.teacherRooms.get(teacherId);
+            if (roomId) {
+                this.io.to(roomId).emit('session:end', { leaderboard });
+                this.teacherRooms.delete(teacherId);
+            }
+        } catch (error) {
+            console.error('Error emitting session end:', error);
         }
     }
 
@@ -121,6 +158,14 @@ class SocketService {
         const roomId = this.teacherRooms.get(teacherId);
         if (roomId) {
             this.io.to(roomId).emit('file:deleted', { fileId });
+        }
+    }
+
+    // Emit student left to teacher's room
+    emitStudentLeft(teacherId, data) {
+        const roomId = this.teacherRooms.get(teacherId);
+        if (roomId) {
+            this.io.to(roomId).emit('student:left', data);
         }
     }
 }

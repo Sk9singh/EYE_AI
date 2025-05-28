@@ -77,6 +77,31 @@ function sessionRoutes(sessionController) {
         }
     });
 
+    // Add student leave route
+    router.post('/student/leave', async (req, res) => {
+        try {
+            const { teacherId, studentId } = req.body;
+            const result = await sessionController.removeStudent(teacherId, studentId);
+            if (!result) {
+                return res.status(404).json({ error: 'No active session found' });
+            }
+            res.json({ message: 'Left session successfully' });
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    // Add route to get total students count
+    router.get('/students/count', async (req, res) => {
+        try {
+            const { teacherId } = req.query;
+            const count = await sessionController.getActiveStudentsCount(teacherId);
+            res.json({ count });
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
     return router;
 }
 

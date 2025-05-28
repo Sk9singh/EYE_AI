@@ -105,11 +105,15 @@ class SessionController {
         session.students.push(studentData);
         await session.save();
 
+        // Emit student joined event
         this.socketService.emitStudentJoined(teacherId, {
             studentId,
             studentName,
             joinedAt: new Date()
         });
+
+        // Emit updated student count
+        this.socketService.emitActiveStudentsCount(teacherId, session.students.length);
 
         await this.updateGraphMetrics(teacherId);
 
@@ -252,6 +256,7 @@ class SessionController {
         return {
             sessionId: session._id,
             startTime: session.startTime,
+            totalStudents: session.students.length,
             students: session.students.map(student => ({
                 studentId: student.studentId,
                 studentName: student.studentName,
@@ -264,6 +269,50 @@ class SessionController {
             })),
             graphMetrics: session.graphMetrics
         };
+    }
+
+    async removeStudent(teacherId, studentId) {
+        try {
+            const session = await Session.findOne({ teacherId, isActive: true });
+            if (!session) return null;
+
+            const studentIndex = session.students.findIndex(s => s.studentId === studentId);
+            if (studentIndex === -1) return null;
+
+            // Remove student from the session
+            session.students.splice(studentIndex, 1);
+            await session.save();
+
+            // Emit student left event
+            this.socketService.emitStudentLeft(teacherId, {
+                studentId,
+                timestamp: new Date()
+            });
+
+            // Emit updated student count
+            this.socketService.emitActiveStudentsCount(teacherId, session.students.length);
+
+            // Update graph metrics
+            await this.updateGraphMetrics(teacherId);
+
+            return session;
+        } catch (error) {
+            console.error('Error removing student:', error);
+            throw error;
+        }
+    }
+
+    async getActiveStudentsCount(teacherId) {
+        try {
+            const session = await Session.findOne({ teacherId, isActive: true });
+            if (!session) return 0;
+
+            // Count only active students
+            return session.students.filter(student => student.isActive).length;
+        } catch (error) {
+            console.error('Error getting active students count:', error);
+            throw error;
+        }
     }
 }
 
