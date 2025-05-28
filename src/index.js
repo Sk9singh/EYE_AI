@@ -16,11 +16,14 @@ const app = express();
 const server = http.createServer(app);
 
 // Configure CORS for both Express and Socket.IO
-app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Accept']
-}));
+const corsOptions = {
+    origin: process.env.NODE_ENV === 'production' 
+        ? ['https://your-frontend-domain.com', 'http://localhost:3000']
+        : '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true
+};
 
 const io = new Server(server, {
     cors: {
