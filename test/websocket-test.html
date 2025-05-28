@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        .container {
+            display: flex;
+            gap: 20px;
+            padding: 20px;
+        }
+        .panel {
+            border: 1px solid #ccc;
+            padding: 20px;
+            border-radius: 5px;
+            width: 45%;
+        }
+        .log {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            padding: 10px;
+            margin-top: 10px;
+            font-family: monospace;
+        }
+        button {
+            margin: 5px;
+            padding: 8px 15px;
+            cursor: pointer;
+        }
+        .status {
+            color: green;
+            font-weight: bold;
+        }
+        .error {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Teacher Panel -->
+        <div class="panel">
+            <h2>Teacher Panel</h2>
+            <div>
+                <input type="text" id="teacherId" placeholder="Teacher ID" value="teacher123">
+                <button onclick="teacherJoin()">Join as Teacher</button>
+                <button onclick="startSession()">Start Session</button>
+                <button onclick="endSession()">End Session</button>
+            </div>
+            <div id="fileList" style="margin-top: 10px;">
+                <h3>Uploaded Files</h3>
+                <div id="files"></div>
+            </div>
+            <div class="log" id="teacherLog"></div>
+        </div>
+
+        <!-- Student Panel -->
+        <div class="panel">
+            <h2>Student Panel</h2>
+            <div>
+                <input type="text" id="studentId" placeholder="Student ID" value="student1">
+                <input type="text" id="studentName" placeholder="Student Name" value="John Doe">
+                <button onclick="studentJoin()">Join as Student</button>
+                <button onclick="updateAttention('center')">Look Center</button>
+                <button onclick="updateAttention('left')">Look Left</button>
+                <button onclick="updateAttention('right')">Look Right</button>
+                <button onclick="updateCamera('active')">Camera On</button>
+                <button onclick="updateCamera('inactive')">Camera Off</button>
+                <div style="margin-top: 10px;">
+                    <input type="file" id="fileInput" accept="image/*">
+                    <input type="text" id="fileDescription" placeholder="File description">
+                    <button onclick="uploadFile()">Upload File</button>
+                </div>
+            </div>
+            <div class="log" id="studentLog"></div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io('http://localhost:3000');
+        let currentTeacherId = '';
+        let currentStudentId = '';
+        let currentStudentName = '';
+        let currentSessionId = '';
+
+        // Connection status
+        socket.on('connect', () => {
+            log('teacher', 'Connected to server');
+            log('student', 'Connected to server');
+        });
+
+        socket.on('disconnect', () => {
+            log('teacher', 'Disconnected from server');
+            log('student', 'Disconnected from server');
+        });
+
+        // Teacher functions
+        function teacherJoin() {
+            currentTeacherId = document.getElementById('teacherId').value;
+            socket.emit('teacher:join', currentTeacherId);
+            log('teacher', `Joined as teacher: ${currentTeacherId}`);
+        }
+
+        async function startSession() {
+            try {
+                const response = await fetch('http://localhost:3000/api/teacher/start', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ teacherId: currentTeacherId })
+                });
+
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    console.error('Response headers:', Object.fromEntries(response.headers.entries()));
+                    throw new Error(`Expected JSON response but got ${contentType}`);
+                }
+
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to start session');
+                }
+
+                currentSessionId = data.sessionId;
+                log('teacher', `Session started: ${JSON.stringify(data)}`);
+                getSessionFiles();
+            } catch (error) {
+                log('teacher', `Error: ${error.message}`, true);
+                console.error('Start session error:', error);
+            }
+        }
+
+        async function endSession() {
+            try {
+                const response = await fetch('http://localhost:3000/api/teacher/end', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ teacherId: currentTeacherId })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to end session');
+                }
+
+                const data = await response.json();
+                log('teacher', `Session ended: ${JSON.stringify(data)}`);
+            } catch (error) {
+                log('teacher', `Error: ${error.message}`, true);
+            }
+        }
+
+        // Student functions
+        async function studentJoin() {
+            try {
+                currentStudentId = document.getElementById('studentId').value;
+                currentStudentName = document.getElementById('studentName').value;
+                currentTeacherId = document.getElementById('teacherId').value;
+
+                const response = await fetch('http://localhost:3000/api/student/join', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        teacherId: currentTeacherId,
+                        studentId: currentStudentId,
+                        studentName: currentStudentName
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to join session');
+                }
+
+                const data = await response.json();
+                socket.emit('student:join', {
+                    teacherId: currentTeacherId,
+                    studentId: currentStudentId,
+                    studentName: currentStudentName
+                });
+                log('student', `Joined session: ${JSON.stringify(data)}`);
+            } catch (error) {
+                log('student', `Error: ${error.message}`, true);
+            }
+        }
+
+        async function updateAttention(direction) {
+            try {
+                const response = await fetch('http://localhost:3000/api/student/attention', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        teacherId: currentTeacherId,
+                        studentId: currentStudentId,
+                        direction: direction
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to update attention');
+                }
+
+                const data = await response.json();
+                socket.emit('student:attention', {
+                    direction: direction,
+                    isAttentive: direction === 'center'
+                });
+                log('student', `Attention updated: ${JSON.stringify(data)}`);
+            } catch (error) {
+                log('student', `Error: ${error.message}`, true);
+            }
+        }
+
+        async function updateCamera(status) {
+            try {
+                const response = await fetch('http://localhost:3000/api/student/camera', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        teacherId: currentTeacherId,
+                        studentId: currentStudentId,
+                        status: status
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to update camera status');
+                }
+
+                const data = await response.json();
+                socket.emit('student:camera', { status: status });
+                log('student', `Camera status updated: ${JSON.stringify(data)}`);
+            } catch (error) {
+                log('student', `Error: ${error.message}`, true);
+            }
+        }
+
+        // Event listeners
+        socket.on('session:start', (data) => {
+            log('teacher', `Session started: ${JSON.stringify(data)}`);
+        });
+
+        socket.on('session:end', () => {
+            log('teacher', 'Session ended');
+        });
+
+        socket.on('student:joined', (data) => {
+            log('teacher', `Student joined: ${JSON.stringify(data)}`);
+        });
+
+        socket.on('attention:update', (data) => {
+            log('teacher', `Attention update: ${JSON.stringify(data)}`);
+        });
+
+        socket.on('camera:update', (data) => {
+            log('teacher', `Camera update: ${JSON.stringify(data)}`);
+        });
+
+        socket.on('graph:metrics', (data) => {
+            log('teacher', `Graph metrics: ${JSON.stringify(data)}`);
+        });
+
+        socket.on('attention:metrics', (data) => {
+            log('teacher', `Attention metrics: ${JSON.stringify(data)}`);
+        });
+
+        // File upload function
+        async function uploadFile() {
+            try {
+                const fileInput = document.getElementById('fileInput');
+                const file = fileInput.files[0];
+                const description = document.getElementById('fileDescription').value;
+
+                if (!file) {
+                    throw new Error('Please select a file');
+                }
+
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('teacherId', currentTeacherId);
+                formData.append('sessionId', currentSessionId);
+                formData.append('studentId', currentStudentId);
+                formData.append('studentName', currentStudentName);
+                formData.append('description', description);
+
+                const response = await fetch('http://localhost:3000/api/files/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to upload file');
+                }
+
+                const data = await response.json();
+                log('student', `File uploaded: ${JSON.stringify(data)}`);
+                
+                // Clear file input
+                fileInput.value = '';
+                document.getElementById('fileDescription').value = '';
+            } catch (error) {
+                log('student', `Error: ${error.message}`, true);
+            }
+        }
+
+        // Download file function
+        async function downloadFile(fileId, fileName) {
+            try {
+                const response = await fetch(`http://localhost:3000/api/files/download/${fileId}`);
+                if (!response.ok) {
+                    throw new Error('Failed to download file');
+                }
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            } catch (error) {
+                log('teacher', `Error: ${error.message}`, true);
+            }
+        }
+
+        // Delete file function
+        async function deleteFile(fileId) {
+            try {
+                const response = await fetch(`http://localhost:3000/api/files/${fileId}`, {
+                    method: 'DELETE'
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to delete file');
+                }
+
+                const data = await response.json();
+                log('teacher', `File deleted: ${JSON.stringify(data)}`);
+            } catch (error) {
+                log('teacher', `Error: ${error.message}`, true);
+            }
+        }
+
+        // Update file list
+        function updateFileList(files) {
+            const fileList = document.getElementById('files');
+            fileList.innerHTML = '';
+
+            files.forEach(file => {
+                const fileDiv = document.createElement('div');
+                fileDiv.style.marginBottom = '10px';
+                fileDiv.innerHTML = `
+                    <div>
+                        <strong>${file.fileName}</strong> - ${file.studentName}
+                        <br>
+                        <small>${new Date(file.uploadTime).toLocaleString()}</small>
+                        <br>
+                        <small>${file.description || 'No description'}</small>
+                        <br>
+                        <button onclick="downloadFile('${file._id}', '${file.fileName}')">Download</button>
+                        <button onclick="deleteFile('${file._id}')">Delete</button>
+                    </div>
+                `;
+                fileList.appendChild(fileDiv);
+            });
+        }
+
+        // Get session files
+        async function getSessionFiles() {
+            try {
+                const response = await fetch(`http://localhost:3000/api/files/session/${currentTeacherId}/${currentSessionId}`);
+                if (!response.ok) {
+                    throw new Error('Failed to get session files');
+                }
+
+                const files = await response.json();
+                updateFileList(files);
+            } catch (error) {
+                log('teacher', `Error: ${error.message}`, true);
+            }
+        }
+
+        // Add file event listeners
+        socket.on('file:uploaded', (data) => {
+            log('teacher', `New file uploaded: ${JSON.stringify(data)}`);
+            getSessionFiles();
+        });
+
+        socket.on('file:deleted', (data) => {
+            log('teacher', `File deleted: ${JSON.stringify(data)}`);
+            getSessionFiles();
+        });
+
+        // Utility function
+        function log(panel, message, isError = false) {
+            const logElement = document.getElementById(`${panel}Log`);
+            const time = new Date().toLocaleTimeString();
+            const className = isError ? 'error' : '';
+            logElement.innerHTML += `<div class="${className}">[${time}] ${message}</div>`;
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+    </script>
+</body>
+</html> 
