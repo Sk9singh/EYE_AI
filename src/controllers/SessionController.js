@@ -314,6 +314,57 @@ class SessionController {
             throw error;
         }
     }
+
+    async getSessionSummary(teacherId, sessionId) {
+        try {
+            const session = await Session.findOne({ 
+                teacherId, 
+                _id: sessionId,
+                isActive: false // Only get summary for ended sessions
+            });
+
+            if (!session) {
+                throw new Error('Session not found or still active');
+            }
+
+            // Sort students by attention percentage for leaderboard
+            const sortedStudents = [...session.students].sort((a, b) => 
+                b.attentionPercentage - a.attentionPercentage
+            );
+
+            // Calculate session statistics
+            const totalDuration = session.getDuration();
+            const averageAttention = session.getAverageAttentionPercentage();
+
+            return {
+                sessionId: session._id,
+                startTime: session.startTime,
+                endTime: session.endTime,
+                totalDuration: totalDuration,
+                totalStudents: session.students.length,
+                averageAttention: averageAttention,
+                students: sortedStudents.map(student => ({
+                    studentId: student.studentId,
+                    studentName: student.studentName,
+                    totalAttentiveTime: student.totalAttentiveTime,
+                    totalSessionTime: student.totalSessionTime,
+                    attentionPercentage: student.attentionPercentage,
+                    cameraStatus: student.cameraStatus
+                })),
+                // Add graph metrics summary
+                // graphMetrics: {
+                //     total: session.graphMetrics.length,
+                //     averageAttentiveCount: session.graphMetrics.reduce((sum, metric) => 
+                //         sum + metric.attentiveCount, 0) / session.graphMetrics.length,
+                //     averageInattentiveCount: session.graphMetrics.reduce((sum, metric) => 
+                //         sum + metric.inattentiveCount, 0) / session.graphMetrics.length
+                // }
+            };
+        } catch (error) {
+            console.error('Error getting session summary:', error);
+            throw error;
+        }
+    }
 }
 
 module.exports = SessionController; 
