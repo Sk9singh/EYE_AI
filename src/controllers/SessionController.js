@@ -86,38 +86,55 @@ class SessionController {
     }
 
     async addStudent(teacherId, studentId, studentName) {
-        const sessionId = this.activeSessions.get(teacherId);
-        if (!sessionId) return null;
+        try {
+            const sessionId = this.activeSessions.get(teacherId);
+            if (!sessionId) return null;
 
-        const session = await Session.findById(sessionId);
-        if (!session) return null;
+            // Use findOneAndUpdate with $addToSet to ensure uniqueness
+            const session = await Session.findOneAndUpdate(
+                { 
+                    _id: sessionId,
+                    'students.studentId': { $ne: studentId } // Only update if studentId doesn't exist
+                },
+                {
+                    $addToSet: {
+                        students: {
+                            studentId,
+                            studentName,
+                            attentionRecords: [],
+                            cameraStatus: 'inactive',
+                            totalAttentiveTime: 0,
+                            totalSessionTime: 0,
+                            attentionPercentage: 0,
+                            isActive: true
+                        }
+                    }
+                },
+                { new: true } // Return the updated document
+            );
 
-        const studentData = {
-            studentId,
-            studentName,
-            attentionRecords: [],
-            cameraStatus: 'inactive',
-            totalAttentiveTime: 0,
-            totalSessionTime: 0,
-            attentionPercentage: 0
-        };
+            if (!session) {
+                // Session not found or student already exists
+                return null;
+            }
 
-        session.students.push(studentData);
-        await session.save();
+            // Emit student joined event
+            this.socketService.emitStudentJoined(teacherId, {
+                studentId,
+                studentName,
+                joinedAt: new Date()
+            });
 
-        // Emit student joined event
-        this.socketService.emitStudentJoined(teacherId, {
-            studentId,
-            studentName,
-            joinedAt: new Date()
-        });
+            // Emit updated student count
+            this.socketService.emitActiveStudentsCount(teacherId, session.students.length);
 
-        // Emit updated student count
-        this.socketService.emitActiveStudentsCount(teacherId, session.students.length);
+            await this.updateGraphMetrics(teacherId);
 
-        await this.updateGraphMetrics(teacherId);
-
-        return session;
+            return session;
+        } catch (error) {
+            console.error('Error adding student:', error);
+            return null;
+        }
     }
 
     async updateAttention(teacherId, studentId, direction) {

@@ -64,7 +64,7 @@ function sessionRoutes(sessionController) {
         }
     });
 
-    router.post('/student/camera', async (req, res) => {
+    router.patch('/student/camera', async (req, res) => {
         try {
             const { teacherId, studentId, status } = req.body;
             const result = await sessionController.updateCameraStatus(teacherId, studentId, status);
