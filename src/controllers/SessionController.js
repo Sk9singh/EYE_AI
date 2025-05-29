@@ -217,6 +217,8 @@ class SessionController {
         const now = new Date();
         const metrics = {
             timestamp: now,
+            formattedTime: now.toLocaleTimeString(),
+            totalStudents: session.students.length,
             attentiveCount: 0,
             inattentiveCount: 0,
             cameraOffCount: 0,
@@ -237,6 +239,17 @@ class SessionController {
                 }
             }
         });
+
+        // Validate that counts add up to total students
+        const totalCount = metrics.attentiveCount + metrics.inattentiveCount + 
+                          metrics.cameraOffCount + metrics.notDetectedCount;
+        if (totalCount !== metrics.totalStudents) {
+            console.warn('Graph metrics count mismatch:', {
+                totalCount,
+                totalStudents: metrics.totalStudents,
+                metrics
+            });
+        }
 
         session.graphMetrics.push(metrics);
         await session.save();
@@ -336,6 +349,25 @@ class SessionController {
             const totalDuration = session.getDuration();
             const averageAttention = session.getAverageAttentionPercentage();
 
+            // Calculate graph metrics summary
+            const graphMetrics = session.graphMetrics;
+            const metricsSummary = {
+                total: graphMetrics.length,
+                averageAttentiveCount: graphMetrics.reduce((sum, metric) => 
+                    sum + metric.attentiveCount, 0) / graphMetrics.length,
+                averageInattentiveCount: graphMetrics.reduce((sum, metric) => 
+                    sum + metric.inattentiveCount, 0) / graphMetrics.length,
+                averageCameraOffCount: graphMetrics.reduce((sum, metric) => 
+                    sum + metric.cameraOffCount, 0) / graphMetrics.length,
+                averageNotDetectedCount: graphMetrics.reduce((sum, metric) => 
+                    sum + metric.notDetectedCount, 0) / graphMetrics.length,
+                // Add peak values
+                peakAttentiveCount: Math.max(...graphMetrics.map(m => m.attentiveCount)),
+                peakInattentiveCount: Math.max(...graphMetrics.map(m => m.inattentiveCount)),
+                peakCameraOffCount: Math.max(...graphMetrics.map(m => m.cameraOffCount)),
+                peakNotDetectedCount: Math.max(...graphMetrics.map(m => m.notDetectedCount))
+            };
+
             return {
                 sessionId: session._id,
                 startTime: session.startTime,
@@ -351,14 +383,7 @@ class SessionController {
                     attentionPercentage: student.attentionPercentage,
                     cameraStatus: student.cameraStatus
                 })),
-                // Add graph metrics summary
-                // graphMetrics: {
-                //     total: session.graphMetrics.length,
-                //     averageAttentiveCount: session.graphMetrics.reduce((sum, metric) => 
-                //         sum + metric.attentiveCount, 0) / session.graphMetrics.length,
-                //     averageInattentiveCount: session.graphMetrics.reduce((sum, metric) => 
-                //         sum + metric.inattentiveCount, 0) / session.graphMetrics.length
-                // }
+                graphMetrics: metricsSummary
             };
         } catch (error) {
             console.error('Error getting session summary:', error);

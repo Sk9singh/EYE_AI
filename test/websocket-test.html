@@ -1,193 +1,420 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>WebSocket Test</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eye Tracker API Test</title>
+    <!-- Add Socket.IO client library from CDN -->
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
-        .container {
-            display: flex;
-            gap: 20px;
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
             padding: 20px;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
         }
         .panel {
             border: 1px solid #ccc;
-            padding: 20px;
+            padding: 15px;
             border-radius: 5px;
-            width: 45%;
         }
-        .log {
+        .log-container {
             height: 300px;
             overflow-y: auto;
             border: 1px solid #eee;
             padding: 10px;
             margin-top: 10px;
-            font-family: monospace;
+            background: #f9f9f9;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+        }
+        .teacher-log { color: #2196F3; }
+        .student-log { color: #4CAF50; }
+        .error { color: #f44336; }
+        .success { color: #4CAF50; }
+        .graph-container {
+            height: 200px;
+            border: 1px solid #ccc;
+            margin-top: 10px;
+            position: relative;
+            display: flex;
+            align-items: flex-end;
+            padding: 10px;
+            gap: 20px;
+        }
+        .bar {
+            position: relative;
+            width: 40px;
+            transition: height 0.3s ease;
+            border-radius: 4px 4px 0 0;
+        }
+        .attentive { background-color: #4CAF50; }
+        .inattentive { background-color: #f44336; }
+        .camera-off { background-color: #FFC107; }
+        .not-detected { background-color: #9E9E9E; }
+        .bar-label {
+            position: absolute;
+            bottom: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 12px;
+            white-space: nowrap;
         }
         button {
             margin: 5px;
             padding: 8px 15px;
+            border: none;
+            border-radius: 4px;
+            background: #2196F3;
+            color: white;
             cursor: pointer;
         }
-        .status {
-            color: green;
-            font-weight: bold;
+        button:hover {
+            background: #1976D2;
         }
-        .error {
-            color: red;
+        input {
+            margin: 5px;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .metric {
+            text-align: center;
+            padding: 10px;
+            background: #f5f5f5;
+            border-radius: 4px;
+        }
+        .system-log { color: #9C27B0; }
+        .disconnected { 
+            background-color: #ffebee;
+            border: 1px solid #f44336;
+        }
+        .connected {
+            background-color: #e8f5e9;
+            border: 1px solid #4CAF50;
+        }
+        #connectionStatus {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            text-align: center;
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
+    <h1>Eye Tracker API Test</h1>
+    
+    <!-- Add Connection Status -->
+    <div id="connectionStatus" class="disconnected">Disconnected</div>
+    
     <div class="container">
         <!-- Teacher Panel -->
         <div class="panel">
-            <h2>Teacher Panel</h2>
-            <div>
-                <input type="text" id="teacherId" placeholder="Teacher ID" value="teacher123">
-                <button onclick="teacherJoin()">Join as Teacher</button>
-                <button onclick="startSession()">Start Session</button>
-                <button onclick="endSession()">End Session</button>
-            </div>
-            <div id="fileList" style="margin-top: 10px;">
-                <h3>Uploaded Files</h3>
-                <div id="files"></div>
-            </div>
-            <div class="log" id="teacherLog"></div>
+            <h2>Teacher Controls</h2>
+            <input type="text" id="teacherId" placeholder="Teacher ID">
+            <button onclick="startSession()">Start Session</button>
+            <button onclick="endSession()">End Session</button>
+            <button onclick="getSessionData()">Get Session Data</button>
+            <button onclick="getSessionSummary()">Get Session Summary</button>
+            <div class="log-container" id="teacherLog"></div>
         </div>
 
         <!-- Student Panel -->
         <div class="panel">
-            <h2>Student Panel</h2>
-            <div>
-                <input type="text" id="studentId" placeholder="Student ID" value="student1">
-                <input type="text" id="studentName" placeholder="Student Name" value="John Doe">
-                <button onclick="studentJoin()">Join as Student</button>
-                <button onclick="updateAttention('center')">Look Center</button>
-                <button onclick="updateAttention('left')">Look Left</button>
-                <button onclick="updateAttention('right')">Look Right</button>
-                <button onclick="updateCamera('active')">Camera On</button>
-                <button onclick="updateCamera('inactive')">Camera Off</button>
-                <div style="margin-top: 10px;">
-                    <input type="file" id="fileInput" accept="image/*">
-                    <input type="text" id="fileDescription" placeholder="File description">
-                    <button onclick="uploadFile()">Upload File</button>
-                </div>
+            <h2>Student Controls</h2>
+            <input type="text" id="studentId" placeholder="Student ID">
+            <input type="text" id="studentName" placeholder="Student Name">
+            <button onclick="studentJoin()">Join Session</button>
+            <button onclick="studentLeave()">Leave Session</button>
+            <button onclick="updateAttention('center')">Update Attention (Center)</button>
+            <button onclick="updateAttention('left')">Update Attention (Left)</button>
+            <button onclick="updateAttention('right')">Update Attention (Right)</button>
+            <button onclick="updateCamera('active')">Camera On</button>
+            <button onclick="updateCamera('inactive')">Camera Off</button>
+            <div class="log-container" id="studentLog"></div>
+        </div>
+    </div>
+
+    <!-- Real-time Graph -->
+    <div class="panel">
+        <h2>Real-time Graph</h2>
+        <div class="graph-container" id="graphContainer">
+            <div class="bar attentive" id="attentiveBar"></div>
+            <div class="bar inattentive" id="inattentiveBar"></div>
+            <div class="bar camera-off" id="cameraOffBar"></div>
+            <div class="bar not-detected" id="notDetectedBar"></div>
+        </div>
+        <div class="metrics">
+            <div class="metric">
+                <h3>Attentive</h3>
+                <div id="attentiveCount">0</div>
             </div>
-            <div class="log" id="studentLog"></div>
+            <div class="metric">
+                <h3>Inattentive</h3>
+                <div id="inattentiveCount">0</div>
+            </div>
+            <div class="metric">
+                <h3>Camera Off</h3>
+                <div id="cameraOffCount">0</div>
+            </div>
+            <div class="metric">
+                <h3>Not Detected</h3>
+                <div id="notDetectedCount">0</div>
+            </div>
         </div>
     </div>
 
     <script>
-        const socket = io('http://localhost:3000');
-        let currentTeacherId = '';
-        let currentStudentId = '';
-        let currentStudentName = '';
-        let currentSessionId = '';
+        let socket;
+        let currentTeacherId;
+        let currentStudentId;
+        let currentStudentName;
+        let currentSessionId;
+        let isConnected = false;
 
-        // Connection status
-        socket.on('connect', () => {
-            log('teacher', 'Connected to server');
-            log('student', 'Connected to server');
-        });
+        // API base URL
+        const API_BASE_URL = 'http://localhost:3000/api';
 
-        socket.on('disconnect', () => {
-            log('teacher', 'Disconnected from server');
-            log('student', 'Disconnected from server');
-        });
-
-        // Teacher functions
-        function teacherJoin() {
-            currentTeacherId = document.getElementById('teacherId').value;
-            socket.emit('teacher:join', currentTeacherId);
-            log('teacher', `Joined as teacher: ${currentTeacherId}`);
-        }
-
-        async function startSession() {
+        // Initialize WebSocket connection
+        function initSocket() {
             try {
-                const response = await fetch('http://localhost:3000/api/teacher/start', {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({ teacherId: currentTeacherId })
+                socket = io('http://localhost:3000', {
+                    transports: ['websocket'],
+                    reconnection: true,
+                    reconnectionAttempts: 5,
+                    reconnectionDelay: 1000,
+                    timeout: 10000
                 });
 
-                const contentType = response.headers.get('content-type');
-                if (!contentType || !contentType.includes('application/json')) {
-                    console.error('Response headers:', Object.fromEntries(response.headers.entries()));
-                    throw new Error(`Expected JSON response but got ${contentType}`);
+                // Socket event listeners
+                socket.on('connect', () => {
+                    isConnected = true;
+                    updateConnectionStatus(true);
+                    log('system', 'Connected to WebSocket server');
+                });
+
+                socket.on('disconnect', () => {
+                    isConnected = false;
+                    updateConnectionStatus(false);
+                    log('system', 'Disconnected from WebSocket server', true);
+                });
+
+                socket.on('connect_error', (error) => {
+                    isConnected = false;
+                    updateConnectionStatus(false);
+                    log('system', `Connection error: ${error.message}`, true);
+                });
+
+                socket.on('sessionStart', (data) => {
+                    log('teacher', `Session started: ${JSON.stringify(data)}`);
+                    currentSessionId = data.sessionId;
+                });
+
+                socket.on('sessionEnd', () => {
+                    log('teacher', 'Session ended');
+                });
+
+                socket.on('studentJoined', (data) => {
+                    log('teacher', `Student joined: ${JSON.stringify(data)}`);
+                });
+
+                socket.on('studentLeft', (data) => {
+                    log('teacher', `Student left: ${JSON.stringify(data)}`);
+                });
+
+                socket.on('attentionMetrics', (data) => {
+                    log('teacher', `Attention metrics: ${JSON.stringify(data)}`);
+                });
+
+                socket.on('graphMetrics', (data) => {
+                    updateGraph(data);
+                });
+
+                socket.on('activeStudentsCount', (count) => {
+                    log('teacher', `Active students count: ${count}`);
+                });
+
+            } catch (error) {
+                log('system', `Failed to initialize socket: ${error.message}`, true);
+                updateConnectionStatus(false);
+            }
+        }
+
+        function updateConnectionStatus(connected) {
+            const statusDiv = document.getElementById('connectionStatus');
+            if (connected) {
+                statusDiv.className = 'connected';
+                statusDiv.textContent = 'Connected';
+            } else {
+                statusDiv.className = 'disconnected';
+                statusDiv.textContent = 'Disconnected';
+            }
+        }
+
+        // Check if Socket.IO is available
+        if (typeof io === 'undefined') {
+            log('system', 'Socket.IO library not found. Please check your internet connection.', true);
+        } else {
+            // Initialize socket on page load
+            initSocket();
+        }
+
+        // Add error handling to all API calls
+        async function makeApiCall(endpoint, method, body = null) {
+            if (!isConnected) {
+                throw new Error('Not connected to server');
+            }
+
+            const url = `${API_BASE_URL}${endpoint}`;
+            console.log(`Making API call to: ${url}`); // Debug log
+
+            const options = {
+                method,
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
+            };
+
+            if (body) {
+                options.body = JSON.stringify(body);
+            }
+
+            try {
+                const response = await fetch(url, options);
+                console.log('Response status:', response.status); // Debug log
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
                 }
 
                 const data = await response.json();
-                if (!response.ok) {
-                    throw new Error(data.error || 'Failed to start session');
+                console.log('Response data:', data); // Debug log
+                return data;
+            } catch (error) {
+                console.error('API call error:', error); // Debug log
+                throw error;
+            }
+        }
+
+        // Teacher functions
+        async function startSession() {
+            try {
+                currentTeacherId = document.getElementById('teacherId').value;
+                if (!currentTeacherId) {
+                    throw new Error('Please enter a teacher ID');
                 }
 
-                currentSessionId = data.sessionId;
+                log('teacher', `Attempting to start session for teacher: ${currentTeacherId}`);
+                
+                const data = await makeApiCall(
+                    '/teacher/start',
+                    'POST',
+                    { teacherId: currentTeacherId }
+                );
+                
                 log('teacher', `Session started: ${JSON.stringify(data)}`);
-                getSessionFiles();
             } catch (error) {
                 log('teacher', `Error: ${error.message}`, true);
-                console.error('Start session error:', error);
             }
         }
 
         async function endSession() {
             try {
-                const response = await fetch('http://localhost:3000/api/teacher/end', {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({ teacherId: currentTeacherId })
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || 'Failed to end session');
+                if (!currentTeacherId) {
+                    throw new Error('No active teacher session');
                 }
 
-                const data = await response.json();
+                const data = await makeApiCall(
+                    '/teacher/end',
+                    'POST',
+                    { teacherId: currentTeacherId }
+                );
                 log('teacher', `Session ended: ${JSON.stringify(data)}`);
             } catch (error) {
                 log('teacher', `Error: ${error.message}`, true);
             }
         }
 
-        // Student functions
+        async function getSessionData() {
+            try {
+                if (!currentTeacherId) {
+                    throw new Error('No active teacher session');
+                }
+
+                const data = await makeApiCall(
+                    `/teacher/session?teacherId=${currentTeacherId}`,
+                    'GET'
+                );
+                log('teacher', `Session data: ${JSON.stringify(data)}`);
+            } catch (error) {
+                log('teacher', `Error: ${error.message}`, true);
+            }
+        }
+
+        async function getSessionSummary() {
+            try {
+                if (!currentTeacherId || !currentSessionId) {
+                    throw new Error('No active session');
+                }
+
+                const data = await makeApiCall(
+                    `/summary?teacherId=${currentTeacherId}&sessionId=${currentSessionId}`,
+                    'GET'
+                );
+                log('teacher', `Session summary: ${JSON.stringify(data)}`);
+            } catch (error) {
+                log('teacher', `Error: ${error.message}`, true);
+            }
+        }
+
         async function studentJoin() {
             try {
                 currentStudentId = document.getElementById('studentId').value;
                 currentStudentName = document.getElementById('studentName').value;
-                currentTeacherId = document.getElementById('teacherId').value;
 
-                const response = await fetch('http://localhost:3000/api/student/join', {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({
+                const data = await makeApiCall(
+                    '/student/join',
+                    'POST',
+                    {
                         teacherId: currentTeacherId,
                         studentId: currentStudentId,
                         studentName: currentStudentName
-                    })
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || 'Failed to join session');
-                }
-
-                const data = await response.json();
-                socket.emit('student:join', {
-                    teacherId: currentTeacherId,
-                    studentId: currentStudentId,
-                    studentName: currentStudentName
-                });
+                    }
+                );
                 log('student', `Joined session: ${JSON.stringify(data)}`);
+            } catch (error) {
+                log('student', `Error: ${error.message}`, true);
+            }
+        }
+
+        async function studentLeave() {
+            try {
+                const data = await makeApiCall(
+                    '/student/leave',
+                    'POST',
+                    {
+                        teacherId: currentTeacherId,
+                        studentId: currentStudentId
+                    }
+                );
+                log('student', `Left session: ${JSON.stringify(data)}`);
             } catch (error) {
                 log('student', `Error: ${error.message}`, true);
             }
@@ -195,30 +422,16 @@
 
         async function updateAttention(direction) {
             try {
-                const response = await fetch('http://localhost:3000/api/student/attention', {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({
+                const data = await makeApiCall(
+                    '/student/attention',
+                    'POST',
+                    {
                         teacherId: currentTeacherId,
                         studentId: currentStudentId,
                         direction: direction
-                    })
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || 'Failed to update attention');
-                }
-
-                const data = await response.json();
-                socket.emit('student:attention', {
-                    direction: direction,
-                    isAttentive: direction === 'center'
-                });
-                log('student', `Attention updated: ${JSON.stringify(data)}`);
+                    }
+                );
+                log('student', `Updated attention: ${JSON.stringify(data)}`);
             } catch (error) {
                 log('student', `Error: ${error.message}`, true);
             }
@@ -226,200 +439,101 @@
 
         async function updateCamera(status) {
             try {
-                const response = await fetch('http://localhost:3000/api/student/camera', {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({
+                const data = await makeApiCall(
+                    '/student/camera',
+                    'POST',
+                    {
                         teacherId: currentTeacherId,
                         studentId: currentStudentId,
                         status: status
-                    })
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || 'Failed to update camera status');
-                }
-
-                const data = await response.json();
-                socket.emit('student:camera', { status: status });
-                log('student', `Camera status updated: ${JSON.stringify(data)}`);
+                    }
+                );
+                log('student', `Updated camera: ${JSON.stringify(data)}`);
             } catch (error) {
                 log('student', `Error: ${error.message}`, true);
             }
         }
 
-        // Event listeners
-        socket.on('session:start', (data) => {
-            log('teacher', `Session started: ${JSON.stringify(data)}`);
-        });
-
-        socket.on('session:end', () => {
-            log('teacher', 'Session ended');
-        });
-
-        socket.on('student:joined', (data) => {
-            log('teacher', `Student joined: ${JSON.stringify(data)}`);
-        });
-
-        socket.on('attention:update', (data) => {
-            log('teacher', `Attention update: ${JSON.stringify(data)}`);
-        });
-
-        socket.on('camera:update', (data) => {
-            log('teacher', `Camera update: ${JSON.stringify(data)}`);
-        });
-
-        socket.on('graph:metrics', (data) => {
-            log('teacher', `Graph metrics: ${JSON.stringify(data)}`);
-        });
-
-        socket.on('attention:metrics', (data) => {
-            log('teacher', `Attention metrics: ${JSON.stringify(data)}`);
-        });
-
-        // File upload function
-        async function uploadFile() {
-            try {
-                const fileInput = document.getElementById('fileInput');
-                const file = fileInput.files[0];
-                const description = document.getElementById('fileDescription').value;
-
-                if (!file) {
-                    throw new Error('Please select a file');
-                }
-
-                const formData = new FormData();
-                formData.append('file', file);
-                formData.append('teacherId', currentTeacherId);
-                formData.append('sessionId', currentSessionId);
-                formData.append('studentId', currentStudentId);
-                formData.append('studentName', currentStudentName);
-                formData.append('description', description);
-
-                const response = await fetch('http://localhost:3000/api/files/upload', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || 'Failed to upload file');
-                }
-
-                const data = await response.json();
-                log('student', `File uploaded: ${JSON.stringify(data)}`);
-                
-                // Clear file input
-                fileInput.value = '';
-                document.getElementById('fileDescription').value = '';
-            } catch (error) {
-                log('student', `Error: ${error.message}`, true);
-            }
+        // Utility functions
+        function log(type, message, isError = false) {
+            const logContainer = document.getElementById(`${type}Log`);
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry ${type}-log ${isError ? 'error' : ''}`;
+            logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
         }
 
-        // Download file function
-        async function downloadFile(fileId, fileName) {
-            try {
-                const response = await fetch(`http://localhost:3000/api/files/download/${fileId}`);
-                if (!response.ok) {
-                    throw new Error('Failed to download file');
-                }
+        function initializeGraph() {
+            const graphContainer = document.getElementById('graphContainer');
+            graphContainer.innerHTML = ''; // Clear existing bars
 
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = fileName;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-            } catch (error) {
-                log('teacher', `Error: ${error.message}`, true);
-            }
-        }
+            // Create bars with labels
+            const bars = [
+                { id: 'attentiveBar', label: 'Attentive', class: 'attentive' },
+                { id: 'inattentiveBar', label: 'Inattentive', class: 'inattentive' },
+                { id: 'cameraOffBar', label: 'Camera Off', class: 'camera-off' },
+                { id: 'notDetectedBar', label: 'Not Detected', class: 'not-detected' }
+            ];
 
-        // Delete file function
-        async function deleteFile(fileId) {
-            try {
-                const response = await fetch(`http://localhost:3000/api/files/${fileId}`, {
-                    method: 'DELETE'
-                });
+            bars.forEach(bar => {
+                const barDiv = document.createElement('div');
+                barDiv.id = bar.id;
+                barDiv.className = `bar ${bar.class}`;
+                barDiv.style.height = '0px';
 
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || 'Failed to delete file');
-                }
+                const labelDiv = document.createElement('div');
+                labelDiv.className = 'bar-label';
+                labelDiv.textContent = bar.label;
 
-                const data = await response.json();
-                log('teacher', `File deleted: ${JSON.stringify(data)}`);
-            } catch (error) {
-                log('teacher', `Error: ${error.message}`, true);
-            }
-        }
-
-        // Update file list
-        function updateFileList(files) {
-            const fileList = document.getElementById('files');
-            fileList.innerHTML = '';
-
-            files.forEach(file => {
-                const fileDiv = document.createElement('div');
-                fileDiv.style.marginBottom = '10px';
-                fileDiv.innerHTML = `
-                    <div>
-                        <strong>${file.fileName}</strong> - ${file.studentName}
-                        <br>
-                        <small>${new Date(file.uploadTime).toLocaleString()}</small>
-                        <br>
-                        <small>${file.description || 'No description'}</small>
-                        <br>
-                        <button onclick="downloadFile('${file._id}', '${file.fileName}')">Download</button>
-                        <button onclick="deleteFile('${file._id}')">Delete</button>
-                    </div>
-                `;
-                fileList.appendChild(fileDiv);
+                barDiv.appendChild(labelDiv);
+                graphContainer.appendChild(barDiv);
             });
+
+            // Initialize counts
+            document.getElementById('attentiveCount').textContent = '0';
+            document.getElementById('inattentiveCount').textContent = '0';
+            document.getElementById('cameraOffCount').textContent = '0';
+            document.getElementById('notDetectedCount').textContent = '0';
         }
 
-        // Get session files
-        async function getSessionFiles() {
-            try {
-                const response = await fetch(`http://localhost:3000/api/files/session/${currentTeacherId}/${currentSessionId}`);
-                if (!response.ok) {
-                    throw new Error('Failed to get session files');
+        function updateGraph(data) {
+            const maxHeight = 180; // Maximum height of the graph container
+            const maxCount = Math.max(
+                data.attentiveCount || 0,
+                data.inattentiveCount || 0,
+                data.cameraOffCount || 0,
+                data.notDetectedCount || 0
+            ) || 1; // Prevent division by zero
+
+            // Update bars with smooth animation
+            const updateBar = (id, count) => {
+                const bar = document.getElementById(id);
+                if (bar) {
+                    const height = (count / maxCount) * maxHeight;
+                    bar.style.height = `${height}px`;
                 }
+            };
 
-                const files = await response.json();
-                updateFileList(files);
-            } catch (error) {
-                log('teacher', `Error: ${error.message}`, true);
-            }
+            updateBar('attentiveBar', data.attentiveCount || 0);
+            updateBar('inattentiveBar', data.inattentiveCount || 0);
+            updateBar('cameraOffBar', data.cameraOffCount || 0);
+            updateBar('notDetectedBar', data.notDetectedCount || 0);
+
+            // Update counts
+            document.getElementById('attentiveCount').textContent = data.attentiveCount || 0;
+            document.getElementById('inattentiveCount').textContent = data.inattentiveCount || 0;
+            document.getElementById('cameraOffCount').textContent = data.cameraOffCount || 0;
+            document.getElementById('notDetectedCount').textContent = data.notDetectedCount || 0;
+
+            // Log the update
+            log('system', `Graph updated: ${JSON.stringify(data)}`);
         }
 
-        // Add file event listeners
-        socket.on('file:uploaded', (data) => {
-            log('teacher', `New file uploaded: ${JSON.stringify(data)}`);
-            getSessionFiles();
+        // Initialize graph when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeGraph();
         });
-
-        socket.on('file:deleted', (data) => {
-            log('teacher', `File deleted: ${JSON.stringify(data)}`);
-            getSessionFiles();
-        });
-
-        // Utility function
-        function log(panel, message, isError = false) {
-            const logElement = document.getElementById(`${panel}Log`);
-            const time = new Date().toLocaleTimeString();
-            const className = isError ? 'error' : '';
-            logElement.innerHTML += `<div class="${className}">[${time}] ${message}</div>`;
-            logElement.scrollTop = logElement.scrollHeight;
-        }
     </script>
 </body>
 </html> 
