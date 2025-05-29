@@ -19,17 +19,24 @@ const server = http.createServer(app);
 // Configure CORS for both Express and Socket.IO
 const corsOptions = {
     origin: process.env.NODE_ENV === 'production' 
-        ? [process.env.FRONTEND_URL || 'http://localhost:3000']
+        ? [
+            process.env.FRONTEND_URL || 'http://localhost:3000',
+            'http://localhost:8080',
+            'https://eye-ai-gx3w.onrender.com'
+          ]
         : '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+    credentials: true,
+    preflightContinue: false,
+    optionsSuccessStatus: 204
 };
 
 app.use(cors(corsOptions));
 
 const io = new Server(server, {
-    cors: corsOptions
+    cors: corsOptions,
+    transports: ['websocket', 'polling']
 });
 
 // Middleware
